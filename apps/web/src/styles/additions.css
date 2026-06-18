@@ -1,0 +1,242 @@
+/* Piano Pop — NEW UI not present in the original bundle (plan §3-D7, §7 steps
+   6 & 9). Kept in a separate file so the recovered game.css stays verbatim and
+   auditable. Reuses the design tokens defined in game.css :root. */
+
+/* ---------- Menu: Settings entry point (gear) ---------- */
+.menu-settings-btn {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 3;
+  width: 46px;
+  height: 46px;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  backdrop-filter: blur(4px);
+  transition: background 0.15s, transform 0.12s ease;
+}
+.menu-settings-btn:hover {
+  background: rgba(255, 255, 255, 0.34);
+}
+.menu-settings-btn:active {
+  transform: translateY(2px);
+}
+.menu-settings-btn svg {
+  width: 24px;
+  height: 24px;
+}
+
+/* ---------- Settings screen ---------- */
+.settings-card {
+  position: relative;
+  z-index: 1;
+  background: var(--panel);
+  border-radius: 28px;
+  box-shadow: var(--shadow);
+  width: min(520px, 92vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 24px 24px;
+  overflow: hidden;
+}
+.settings-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: none;
+  margin-bottom: 8px;
+}
+.settings-head h2 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.settings-back {
+  background: #f6e9ff;
+  color: var(--ink);
+}
+.settings-back:hover {
+  background: #eedcff;
+}
+.settings-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 6px 2px 2px;
+}
+.settings-section {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  padding-top: 8px;
+}
+.settings-section:first-child {
+  padding-top: 0;
+}
+.settings-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.settings-row-h {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+.settings-label {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* segmented control (Difficulty, Color) */
+.seg {
+  display: flex;
+  gap: 6px;
+  padding: 5px;
+  border-radius: 14px;
+  background: #f3e6fb;
+}
+.seg-btn {
+  flex: 1;
+  border: none;
+  cursor: pointer;
+  font-family: var(--font);
+  font-weight: 600;
+  font-size: 15px;
+  padding: 10px 8px;
+  border-radius: 10px;
+  color: var(--ink-soft);
+  background: transparent;
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.seg-btn.on {
+  color: #fff;
+  background: linear-gradient(180deg, #c684ff, #ff6fc0);
+  box-shadow: 0 3px 0 #b347c9;
+}
+
+/* toggle */
+.pp-toggle {
+  position: relative;
+  width: 52px;
+  height: 30px;
+  border: none;
+  border-radius: 999px;
+  background: #e0d3ee;
+  cursor: pointer;
+  padding: 0;
+  flex: none;
+  transition: background 0.15s;
+}
+.pp-toggle[data-on="1"] {
+  background: var(--green);
+}
+.pp-toggle i {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.15s;
+}
+.pp-toggle[data-on="1"] i {
+  transform: translateX(22px);
+}
+
+/* sky palette chips */
+.sky-chips {
+  display: flex;
+  gap: 12px;
+}
+.sky-chip {
+  flex: 1;
+  height: 54px;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.1);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.sky-chip:hover {
+  transform: translateY(-2px);
+}
+.sky-chip.on {
+  box-shadow: 0 0 0 4px rgba(255, 200, 40, 0.85), 0 3px 8px rgba(0, 0, 0, 0.18);
+}
+
+.settings-done {
+  flex: none;
+  margin-top: 16px;
+  width: 100%;
+}
+
+/* ---------- Portrait "rotate your device" nudge (gameplay only) ---------- */
+.rotate-nudge {
+  display: none;
+}
+/* Show only on portrait, touch-ish viewports (phones) during gameplay.
+   Landscape and desktop never see it. */
+@media (orientation: portrait) and (max-width: 920px) {
+  .rotate-nudge {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: grid;
+    place-items: center;
+    background: rgba(30, 50, 110, 0.62);
+    backdrop-filter: blur(4px);
+  }
+  .rotate-nudge-card {
+    text-align: center;
+    color: #fff;
+    padding: 28px;
+  }
+  .rotate-nudge-icon {
+    font-size: 64px;
+    line-height: 1;
+    margin-bottom: 14px;
+    animation: rotateHint 1.6s ease-in-out infinite;
+  }
+  .rotate-nudge p {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    text-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  }
+  @keyframes rotateHint {
+    0%,
+    100% {
+      transform: rotate(-12deg);
+    }
+    50% {
+      transform: rotate(78deg);
+    }
+  }
+}
+
+/* Compact the keyboard a touch on short landscape phones so the wide
+   3-octave board still fits without clipping the field. */
+@media (orientation: landscape) and (max-height: 460px) {
+  .keyboard-wrap {
+    height: clamp(120px, 34vh, 200px);
+  }
+  .hud {
+    height: 56px;
+  }
+}

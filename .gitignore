@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dev-dist/
+*.local
+.DS_Store
+.vite/
+
+# test/build artifacts
+.playwright-mcp/
+test-results/
+playwright-report/

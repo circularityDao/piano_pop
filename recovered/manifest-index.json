@@ -1,0 +1,110 @@
+[
+  {
+    "uuid": "bff7f9c8-0431-4090-a218-862dcc1799fd",
+    "mime": "text/javascript",
+    "compressed": true,
+    "bytes": 109931,
+    "id": null,
+    "file": "recovered/modules/bff7f9c8-0431-4090-a218-862dcc1799fd.js",
+    "head": "/** * @license React * react.development.js * * Copyright (c) Facebook, Inc. and its affiliates. * * This source c"
+  },
+  {
+    "uuid": "e7a305d7-8e2b-4d38-8f55-0c2edcd8ba15",
+    "mime": "text/javascript",
+    "compressed": true,
+    "bytes": 1080227,
+    "id": null,
+    "file": "recovered/modules/e7a305d7-8e2b-4d38-8f55-0c2edcd8ba15.js",
+    "head": "/** * @license React * react-dom.development.js * * Copyright (c) Facebook, Inc. and its affiliates. * * This sour"
+  },
+  {
+    "uuid": "4460027c-cd30-412a-93a9-3b44b3e54262",
+    "mime": "text/jsx",
+    "compressed": true,
+    "bytes": 24572,
+    "id": null,
+    "file": "recovered/modules/4460027c-cd30-412a-93a9-3b44b3e54262.jsx",
+    "head": " /* BEGIN USAGE */ // tweaks-panel.jsx // Reusable Tweaks shell + form-control helpers. // Exports (to window): useTweak"
+  },
+  {
+    "uuid": "222fd872-fd0a-434b-ac11-da22526c58fa",
+    "mime": "application/javascript",
+    "compressed": true,
+    "bytes": 12118,
+    "id": null,
+    "file": "recovered/modules/222fd872-fd0a-434b-ac11-da22526c58fa.js",
+    "head": "// Imperative game engine: drives falling tiles, hit detection, scoring. (function () { const DIFFICULTY = { easy:"
+  },
+  {
+    "uuid": "a1077bf1-4bb3-44d6-b306-f141e102f1ff",
+    "mime": "application/javascript",
+    "compressed": true,
+    "bytes": 2278,
+    "id": null,
+    "file": "recovered/modules/a1077bf1-4bb3-44d6-b306-f141e102f1ff.js",
+    "head": "// Keyboard layout + song data. (function () { // Note name -> semitone offset within octave const NAME_TO_SEMI = { "
+  },
+  {
+    "uuid": "e469d512-7507-4070-aff5-e3d14250f3d9",
+    "mime": "application/javascript",
+    "compressed": true,
+    "bytes": 12047,
+    "id": null,
+    "file": "recovered/modules/e469d512-7507-4070-aff5-e3d14250f3d9.js",
+    "head": "// Piano Pop — UI components (Menu, Piano, Game, Results) const { useState, useEffect, useRef, useCallback } = React; /"
+  },
+  {
+    "uuid": "36c3f811-ce9e-44af-988b-bb2e11ade7d0",
+    "mime": "application/javascript",
+    "compressed": true,
+    "bytes": 2794,
+    "id": null,
+    "file": "recovered/modules/36c3f811-ce9e-44af-988b-bb2e11ade7d0.js",
+    "head": "// Piano Pop — root app + Tweaks const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{ \"difficulty\": \"easy\", \"noteColor\": \"sing"
+  },
+  {
+    "uuid": "04744ceb-69d7-4fcb-9733-54026a69baee",
+    "mime": "application/javascript",
+    "compressed": true,
+    "bytes": 2496,
+    "id": null,
+    "file": "recovered/modules/04744ceb-69d7-4fcb-9733-54026a69baee.js",
+    "head": "// Piano audio engine — soft mallet/piano tone via Web Audio. (function () { class PianoAudio { constructor() { "
+  },
+  {
+    "uuid": "452a4fdb-b1d8-4822-b33f-90cfc736ed70",
+    "mime": "text/javascript",
+    "compressed": true,
+    "bytes": 3137752,
+    "id": null,
+    "file": "recovered/modules/452a4fdb-b1d8-4822-b33f-90cfc736ed70.js",
+    "head": "!function(e,t){\"object\"==typeof exports&&\"undefined\"!=typeof module?t(exports):\"function\"==typeof define&&define.amd?def"
+  },
+  {
+    "uuid": "ff2b3d77-fb1d-4b05-acc9-c1af97ca6ebe",
+    "mime": "font/woff2",
+    "compressed": false,
+    "bytes": 8776,
+    "id": null,
+    "file": "recovered/fonts/fredoka-1.woff2",
+    "head": ""
+  },
+  {
+    "uuid": "49371bb1-26a6-464e-a84b-9acced2902ea",
+    "mime": "font/woff2",
+    "compressed": false,
+    "bytes": 4564,
+    "id": null,
+    "file": "recovered/fonts/fredoka-2.woff2",
+    "head": ""
+  },
+  {
+    "uuid": "7d14faad-d53f-4afb-a3e4-5de34e553b6d",
+    "mime": "font/woff2",
+    "compressed": false,
+    "bytes": 29704,
+    "id": null,
+    "file": "recovered/fonts/fredoka-3.woff2",
+    "head": ""
+  }
+]

@@ -1,0 +1,17 @@
+{
+  "name": "piano-pop-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Piano Pop — faithful PWA rhythm game (Track A) + AI piano-teacher (Track B, designed-now). Monorepo.",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "decode": "node scripts/decode-bundle.mjs",
+    "icons": "node scripts/generate-icons.mjs",
+    "dev": "npm run dev --workspace apps/web",
+    "build": "npm run build --workspace apps/web",
+    "preview": "npm run preview --workspace apps/web",
+    "typecheck": "npm run typecheck --workspace apps/web"
+  }
+}
