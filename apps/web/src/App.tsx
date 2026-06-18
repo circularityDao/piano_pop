@@ -6,13 +6,14 @@ import { Menu } from "./screens/Menu/Menu";
 import { Game } from "./screens/Game/Game";
 import { Results } from "./screens/Results/Results";
 import { Settings } from "./screens/Settings/Settings";
-import { usePreferences } from "./state/usePreferences";
+import { LevelSelect } from "./screens/LevelSelect/LevelSelect";
+import { usePreferences, type Difficulty } from "./state/usePreferences";
 import { pianoAudio } from "./audio/synth";
 import { unlockAudio, installResumeHandlers } from "./audio/audioContext";
-import { SONGS } from "./songs/builtin/twinkle";
+import { SONGS, SONG_LIST } from "./songs/registry";
 import type { EndResult } from "./engine/GameEngine";
 
-type Screen = "menu" | "game" | "results" | "settings";
+type Screen = "menu" | "levels" | "game" | "results" | "settings";
 
 export function App() {
   const [prefs, setPref] = usePreferences();
@@ -20,8 +21,12 @@ export function App() {
   const [result, setResult] = useState<EndResult | null>(null);
   const [muted, setMuted] = useState(false);
   const [runId, setRunId] = useState(0);
+  const [selectedSongId, setSelectedSongId] = useState(SONG_LIST[0].id);
+  // Difficulty chosen on the level-select screen, overriding the saved pref
+  // for this run only. null = fall back to the Settings preference.
+  const [runDifficulty, setRunDifficulty] = useState<Difficulty | null>(null);
 
-  const song = SONGS.twinkle;
+  const song = SONGS[selectedSongId] ?? SONG_LIST[0];
 
   // Install iOS resume handlers once, up front.
   useEffect(() => {
@@ -33,17 +38,22 @@ export function App() {
   }, [muted]);
 
   // Maps prefs -> engine/game settings, exactly as the original derived them.
+  // The per-run level choice (runDifficulty) wins over the saved preference.
   const settings = {
-    difficulty: prefs.difficulty,
+    difficulty: runDifficulty ?? prefs.difficulty,
     colorMode: prefs.noteColor,
     showLetters: prefs.showLetters,
     guideKeys: prefs.guideKeys,
   };
 
-  const startGame = () => {
-    // First-tap gesture: create/resume + silent-buffer unlock the AudioContext.
+  // Menu "Let's Play!" -> choose a level first.
+  const toLevels = () => setScreen("levels");
+
+  // Level chosen: this tap is the gesture that starts audio + the run.
+  const startGame = (difficulty: Difficulty) => {
     pianoAudio.ensure();
     unlockAudio();
+    setRunDifficulty(difficulty);
     setRunId((r) => r + 1);
     setScreen("game");
   };
@@ -66,7 +76,16 @@ export function App() {
   return (
     <div className="app" style={appStyle}>
       {screen === "menu" && (
-        <Menu song={song} onPlay={startGame} onSettings={toSettings} />
+        <Menu
+          songs={SONG_LIST}
+          selectedId={selectedSongId}
+          onSelectSong={setSelectedSongId}
+          onPlay={toLevels}
+          onSettings={toSettings}
+        />
+      )}
+      {screen === "levels" && (
+        <LevelSelect song={song} onSelect={startGame} onBack={toMenu} />
       )}
       {screen === "game" && (
         <Game
