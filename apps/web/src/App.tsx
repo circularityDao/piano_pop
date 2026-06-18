@@ -46,8 +46,11 @@ export function App() {
     guideKeys: prefs.guideKeys,
   };
 
-  // Menu "Let's Play!" -> choose a level first.
-  const toLevels = () => setScreen("levels");
+  // Picking a song on the menu goes straight to the level picker.
+  const pickSong = (id: string) => {
+    setSelectedSongId(id);
+    setScreen("levels");
+  };
 
   // Level chosen: this tap is the gesture that starts audio + the run.
   const startGame = (difficulty: Difficulty) => {
@@ -76,13 +79,7 @@ export function App() {
   return (
     <div className="app" style={appStyle}>
       {screen === "menu" && (
-        <Menu
-          songs={SONG_LIST}
-          selectedId={selectedSongId}
-          onSelectSong={setSelectedSongId}
-          onPlay={toLevels}
-          onSettings={toSettings}
-        />
+        <Menu songs={SONG_LIST} onSelectSong={pickSong} onSettings={toSettings} />
       )}
       {screen === "levels" && (
         <LevelSelect song={song} onSelect={startGame} onBack={toMenu} />

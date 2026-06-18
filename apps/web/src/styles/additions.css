@@ -247,7 +247,15 @@
   flex-direction: column;
   align-items: center;
   gap: 14px;
-  margin: 0 auto 26px;
+  margin: 0 auto 18px;
+  /* Scroll the list when there are more songs than fit. The cards' lift/shadow
+     needs a little padding so it isn't clipped by the overflow box. */
+  max-height: min(52vh, 460px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 10px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 /* The song/level cards are <button>s now — reset the native button look and
    reuse the .song-card surface from game.css. */

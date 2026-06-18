@@ -1,7 +1,7 @@
 // Menu screen — transliterated from recovered module `e469d512`. Additions over
 // the original: the Settings entry point (gear, plan §3-D7) and a multi-song
 // picker (the original shipped a single hard-coded song; we now list the song
-// registry and let the player choose before hitting Play -> level select).
+// registry; tapping a song goes straight to the level picker — no Play button).
 import { Ambient } from "../../components/Ambient";
 import { Icon } from "../../components/Icon";
 import { Star } from "../../components/Star";
@@ -9,19 +9,11 @@ import type { Song } from "../../songs/schema";
 
 interface MenuProps {
   songs: Song[];
-  selectedId: string;
   onSelectSong: (id: string) => void;
-  onPlay: () => void;
   onSettings: () => void;
 }
 
-export function Menu({
-  songs,
-  selectedId,
-  onSelectSong,
-  onPlay,
-  onSettings,
-}: MenuProps) {
+export function Menu({ songs, onSelectSong, onSettings }: MenuProps) {
   return (
     <div className="screen active">
       <Ambient />
@@ -45,17 +37,13 @@ export function Menu({
         </h1>
         <p className="tagline">Catch the magic notes and play real songs!</p>
 
-        {/* Song picker — tap a card to choose, then Play. */}
+        {/* Song picker — tap a card to choose a song and pick a level. */}
         <div className="song-list">
           {songs.map((song) => (
             <button
               key={song.id}
-              className={
-                "song-card song-card-pick" +
-                (song.id === selectedId ? " selected" : "")
-              }
+              className="song-card song-card-pick"
               onClick={() => onSelectSong(song.id)}
-              aria-pressed={song.id === selectedId}
             >
               <div className="song-thumb">
                 <Star className="" style={{ width: 46, height: 46, color: "#fff" }} />
@@ -75,12 +63,7 @@ export function Menu({
           ))}
         </div>
 
-        <button className="btn btn-play" onClick={onPlay}>
-          <Icon name="play" /> Let's Play!
-        </button>
-        <div className="hint-row">
-          Tap the glowing key when a note reaches the bottom ✦
-        </div>
+        <div className="hint-row">Tap a song to choose your level ✦</div>
       </div>
     </div>
   );
