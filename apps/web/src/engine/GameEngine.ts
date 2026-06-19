@@ -26,6 +26,8 @@ export const DIFFICULTY: Record<string, DifficultyEntry> = {
 
 const HIT_FRAC = 0.82; // hit line sits this far down the field (a bit above the keys)
 const HOLD_FRAC = 0.85; // fraction of a long note's duration you must hold to complete it
+const BACKING_VELOCITY = 0.5; // auto-played accompaniment sits under the player's melody
+const BACKING_LATE_MS = 250; // after a stall/tab-switch, skip backing notes older than this
 
 export interface EngineSettings {
   difficulty: string;
@@ -59,6 +61,8 @@ export interface EngineCallbacks {
   stats?: (s: EngineStats) => void;
   target?: (midi: number | null) => void;
   progress?: (p: number) => void;
+  /** Play an auto-accompaniment note (the backing track, not a tile). */
+  accomp?: (midi: number, velocity: number) => void;
   end?: (r: EndResult) => void;
 }
 
@@ -113,6 +117,9 @@ export class GameEngine {
   lastTarget: number | null = null;
   holds: Record<number, RuntimeNote> = {}; // midi -> note currently being held
   endTime = 0;
+  // Auto-played backing track (sorted by time); accompIdx is the next note due.
+  accomp: { midi: number; time: number; vel: number }[] = [];
+  accompIdx = 0;
   _loop: () => void;
 
   constructor(opts: EngineOptions) {
@@ -196,7 +203,16 @@ export class GameEngine {
       hit: false,
       missed: false,
     }));
-    this.endTime = lead + this.song.totalBeats * beatMs + 900;
+    // Schedule the auto-played backing track on the SAME clock as the tiles.
+    const backing = this.song.accompaniment || [];
+    this.accomp = backing
+      .map((a) => ({ midi: a.midi, time: lead + a.beat * beatMs, vel: BACKING_VELOCITY }))
+      .sort((x, y) => x.time - y.time);
+    this.accompIdx = 0;
+    let backingEndBeats = 0;
+    for (const a of backing) backingEndBeats = Math.max(backingEndBeats, a.beat + a.beats);
+    const endBeats = Math.max(this.song.totalBeats, backingEndBeats);
+    this.endTime = lead + endBeats * beatMs + 900;
   }
 
   start(): void {
@@ -405,6 +421,16 @@ export class GameEngine {
     const t = this.now();
     const fall = this.fallMs();
     const total = this.song.notes.length;
+
+    // Play any due backing-track notes. After a stall (pause edge / tab switch)
+    // the clock can jump, so skip notes that are already well past due rather
+    // than dumping them all at once as a chord.
+    if (this.on.accomp) {
+      while (this.accompIdx < this.accomp.length && t >= this.accomp[this.accompIdx].time) {
+        const a = this.accomp[this.accompIdx++];
+        if (t - a.time <= BACKING_LATE_MS) this.on.accomp(a.midi, a.vel);
+      }
+    }
 
     // determine current guidance target (earliest unresolved note approaching)
     let target: number | null = null;

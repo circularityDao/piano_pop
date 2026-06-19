@@ -90,6 +90,8 @@ export function Game({
         },
         target: (midi) => setGuideMidi(settings.guideKeys ? midi : null),
         progress: (p) => setProgress(p),
+        // Backing track: the song minus the player's melody, played for them.
+        accomp: (midi, vel) => pianoAudio.play(midi, vel),
         end: (res) => onFinish(res),
       },
     });

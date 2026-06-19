@@ -24,6 +24,22 @@ export interface Song {
   /** Total length in beats (sum of note durations as built). */
   totalBeats: number;
   notes: Note[];
+  /** Optional auto-played backing track (everything that isn't the player's part). */
+  accompaniment?: AccompNote[];
+}
+
+/**
+ * A backing-track note the game plays automatically — it is NOT a tile and the
+ * player never presses it. Together the player's melody (`notes`) and the
+ * accompaniment reconstruct the original song. Absolute beat positions sit on
+ * the SAME grid as Note.beat so the two stay in sync.
+ */
+export interface AccompNote {
+  midi: number;
+  /** Onset position in beats from the start of the song. */
+  beat: number;
+  /** Duration in beats. */
+  beats: number;
 }
 
 /** A single physical key on the rendered keyboard. */
