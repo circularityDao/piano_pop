@@ -43,12 +43,17 @@ export function Game({
   const [guideMidi, setGuideMidi] = useState<number | null>(null);
   const [count, setCount] = useState<number | null>(3);
   const [paused, setPaused] = useState(false);
+  const [backingOn, setBackingOn] = useState(true);
   const comboPopRef = useRef<HTMLDivElement>(null);
   // count is read by the pointer handlers; ref it so they always see the latest.
   const countRef = useRef<number | null>(3);
   countRef.current = count;
   const pausedRef = useRef(false);
   pausedRef.current = paused;
+  // The engine's accomp callback is created once; read the live toggle via a ref.
+  const backingOnRef = useRef(true);
+  backingOnRef.current = backingOn;
+  const hasBacking = !!song.accompaniment && song.accompaniment.length > 0;
 
   const flashKey = useCallback((midi: number, cls: string) => {
     const el =
@@ -91,7 +96,10 @@ export function Game({
         target: (midi) => setGuideMidi(settings.guideKeys ? midi : null),
         progress: (p) => setProgress(p),
         // Backing track: the song minus the player's melody, played for them.
-        accomp: (midi, vel) => pianoAudio.play(midi, vel),
+        // Skipped live when the player toggles it off in the HUD.
+        accomp: (midi, vel) => {
+          if (backingOnRef.current) pianoAudio.play(midi, vel);
+        },
         end: (res) => onFinish(res),
       },
     });
@@ -155,8 +163,11 @@ export function Game({
           score={score}
           combo={combo}
           muted={muted}
+          hasBacking={hasBacking}
+          backingOn={backingOn}
           onTogglePause={togglePause}
           onToggleMute={onToggleMute}
+          onToggleBacking={() => setBackingOn((v) => !v)}
         />
         <div className="progress-track">
           <div

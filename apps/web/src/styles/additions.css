@@ -304,3 +304,12 @@
   gap: 14px;
   margin-top: 26px;
 }
+
+/* ---------- HUD: backing-track toggle (NEW) ---------- */
+/* Dimmed + struck-through-feel when the auto-played backing track is off. */
+.hud-btn-off {
+  opacity: 0.4;
+}
+.hud-btn-off:hover {
+  opacity: 0.6;
+}
