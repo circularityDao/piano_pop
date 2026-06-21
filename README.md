@@ -12,6 +12,8 @@ piano_pop/
   scripts/
     decode-bundle.mjs           # base64 -> gunzip -> text recovery (run FIRST)
     generate-icons.mjs          # dependency-free PWA PNG icon generator
+    parse-midi.mjs              # .mid -> song module (melody + backing)
+    youtube-to-midi.mjs         # YouTube URL -> audio -> MIDI -> song (authoring)
   recovered/                    # decode output (reference only, not shipped)
   apps/web/                     # the PWA (Vite + React + TS + vite-plugin-pwa)
     src/
@@ -41,6 +43,40 @@ npm run preview            # serve the production build
 npm run test:visual --workspace apps/web   # Playwright screenshots
 #   first run needs: npx playwright install chromium, then --update-snapshots
 ```
+
+## Adding songs from YouTube (local authoring tool)
+
+`scripts/youtube-to-midi.mjs` turns a YouTube URL into a playable song module.
+It is a **local authoring tool** (like `parse-midi.mjs`), **not** wired into the
+shipping PWA — `sources/youtubeSource.ts` stays disabled (plan §9), and you are
+responsible for having the rights to whatever you import.
+
+Pipeline: `yt-dlp` (download audio) → `basic-pitch` (Spotify's audio→MIDI model)
+→ `parse-midi.mjs` (split into player melody + auto-played backing) → register
+in `songs/registry.ts`.
+
+```bash
+# one-time setup
+brew install yt-dlp ffmpeg
+npm run yt2midi:setup                      # creates scripts/.venv + basic-pitch
+
+# convert a song (auto-titles from the video, registers it in the menu)
+npm run yt2midi -- "<youtube-url>" --id mysong --title "My Song"
+
+# transcribe just the chorus, harder difficulty
+npm run yt2midi -- "<url>" --id chorus --clip 1:02-1:34 --difficulty 3
+
+# already have audio? skip YouTube
+npm run yt2midi -- --audio path/to/track.wav --id demo --title Demo
+
+npm run yt2midi -- --help                  # all flags
+```
+
+Raw audio→MIDI transcription is **approximate**: a full mix (vocals + drums +
+bass) yields a noisy melody. Use `--clip` to isolate a section, tune `--min-midi`
+(melody pitch floor), or hand-edit the generated `builtin/<id>.ts` melody array.
+Melody pitches are octave-folded into the C4..B6 keyboard by default (`--no-fold`
+to disable).
 
 ## Fidelity
 

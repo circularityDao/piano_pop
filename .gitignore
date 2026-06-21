@@ -9,3 +9,7 @@ dev-dist/
 .playwright-mcp/
 test-results/
 playwright-report/
+
+# youtube-to-midi authoring tool (local-only): Python venv + work dir
+scripts/.venv/
+scripts/.cache/

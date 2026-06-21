@@ -5,9 +5,10 @@
 import type { Song } from "./schema";
 import { twinkle } from "./builtin/twinkle";
 import { golden } from "./builtin/golden";
+import { turkish_march } from "./builtin/turkish-march";
 
 /** Keyed by id (lookup). */
-export const SONGS: Record<string, Song> = { twinkle, golden };
+export const SONGS: Record<string, Song> = { twinkle, golden, "turkish-march": turkish_march };
 
 /** Menu display order. */
-export const SONG_LIST: Song[] = [twinkle, golden];
+export const SONG_LIST: Song[] = [twinkle, golden, turkish_march];

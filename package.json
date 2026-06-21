@@ -9,6 +9,9 @@
   "scripts": {
     "decode": "node scripts/decode-bundle.mjs",
     "icons": "node scripts/generate-icons.mjs",
+    "yt2midi:setup": "node scripts/youtube-to-midi.mjs --setup",
+    "yt2midi": "node scripts/youtube-to-midi.mjs",
+    "midi2wav": "node scripts/midi-to-wav.mjs",
     "dev": "npm run dev --workspace apps/web",
     "build": "npm run build --workspace apps/web",
     "preview": "npm run preview --workspace apps/web",

@@ -135,6 +135,17 @@ const mono = onsets.map((tk) => {
 const t0 = mono.length ? mono[0].tick : 0; // melody starts at beat 0
 const qOnset = (tick) => round4((tick - t0) / q); // quantized absolute beat
 
+// Optional: fold each player-melody pitch into the game keyboard (C4..B6 =
+// MIDI 60..95) by octave shifts so every tile lands on a real key. Off by
+// default (faithful); youtube-to-midi.mjs turns it on via SONG_FOLD=1 because
+// raw audio transcriptions routinely stray above B6.
+const foldMelody = process.env.SONG_FOLD === "1";
+const foldMidi = (m) => {
+  while (m < 60) m += 12;
+  while (m > 95) m -= 12;
+  return m;
+};
+
 // Melody durations as the difference of quantized onsets, so buildSong's
 // cumulative beat telescopes EXACTLY onto qOnset() — the same grid the
 // accompaniment uses. Last note keeps its own (quantized) duration.
@@ -143,7 +154,7 @@ const melody = mono.map((n, i) => {
   if (i + 1 < mono.length) beats = qOnset(mono[i + 1].tick) - qOnset(n.tick);
   else beats = Math.max(0.25, round4(n.dur / q));
   if (beats <= 0) beats = 0.25; // guard against two onsets snapping together
-  return [noteName(n.midi), beats];
+  return [noteName(foldMelody ? foldMidi(n.midi) : n.midi), beats];
 });
 
 // ---- accompaniment: every note that isn't the chosen melody note ----
@@ -162,6 +173,23 @@ const melodyBeats = melody.reduce((s, m) => s + m[1], 0);
 const accompEnd = accomp.reduce((mx, a) => Math.max(mx, a[1] + a[2]), 0);
 
 if (mode === "ts") {
+  // Song metadata is env-driven so scripts/youtube-to-midi.mjs (and manual
+  // runs) can emit ANY song module; the defaults reproduce golden.ts.
+  const id = process.env.SONG_ID || "golden";
+  const title = process.env.SONG_TITLE || "Golden";
+  const subtitle = process.env.SONG_SUBTITLE || "HUNTR/X · KPop Demon Hunters";
+  const difficulty = process.env.SONG_DIFFICULTY
+    ? parseInt(process.env.SONG_DIFFICULTY, 10)
+    : 2;
+  const beatMs = process.env.SONG_BEATMS
+    ? parseInt(process.env.SONG_BEATMS, 10)
+    : id === "golden"
+      ? 560
+      : Math.round(60000 / bpm); // derive tempo from the MIDI when not pinned
+  // A valid JS identifier derived from the id (used as the var/export prefix).
+  const ident = id.replace(/[^A-Za-z0-9_$]/g, "_").replace(/^[0-9]/, "_$&");
+  const esc = (s) => String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+
   const fmtMel = melody.map((m) => `["${m[0]}", ${m[1]}]`);
   const fmtAcc = accomp.map((a) => `[${a[0]}, ${a[1]}, ${a[2]}]`);
   const block = (arr) => {
@@ -169,47 +197,46 @@ if (mode === "ts") {
     for (let i = 0; i < arr.length; i += 8) out.push("  " + arr.slice(i, i + 8).join(", ") + ",");
     return out.join("\n");
   };
-  process.stdout.write(`// "Golden" (HUNTR/X — KPop Demon Hunters) — full song with backing track.
+  process.stdout.write(`// "${esc(title)}" — full song with backing track.
 //
-// Imported from a piano-solo MIDI (KPOP_Demon_Hunters_-_GOLDEN_-_Solo_-
-// _Debra_VanHouten.mid) via scripts/parse-midi.mjs. The arrangement is a
-// two-hand solo on a single MIDI track. We split it into:
-//   - goldenMelody: the monophonic top line at/above C4 — the tiles the player
-//     taps (every pitch is inside the C4..B6 keyboard, so no transposition).
-//   - goldenBacking: everything else (left-hand bass + chord inner voices),
-//     auto-played by the engine so melody + backing == the original song.
+// Imported from a MIDI via scripts/parse-midi.mjs. We split the performance
+// into:
+//   - ${ident}Melody: the monophonic top line at/above C4 — the tiles the
+//     player taps.
+//   - ${ident}Backing: everything else (bass + chord inner voices), auto-played
+//     by the engine so melody + backing == the original song.
 // Both tracks share one quantized (1/4-beat) grid, so they stay in sync at any
 // difficulty (beatScale/fallMs are applied per play).
 //
 // Regenerate with:
-//   node scripts/parse-midi.mjs <file>.mid all 60 ts > apps/web/src/songs/builtin/golden.ts
+//   node scripts/parse-midi.mjs <file>.mid all ${minMidi} ts > apps/web/src/songs/builtin/${id}.ts
 
 import type { AccompNote, Song } from "../schema";
 import { buildSong } from "./twinkle";
 
 // Player melody as [noteName, beats]; buildSong lays these out sequentially.
 type M = [string, number];
-const goldenMelody: M[] = [
+const ${ident}Melody: M[] = [
 ${block(fmtMel)}
 ];
 
 // Backing track as [midi, beat, beats] on the same absolute beat grid.
-const goldenBacking: [number, number, number][] = [
+const ${ident}Backing: [number, number, number][] = [
 ${block(fmtAcc)}
 ];
 
 const base = buildSong(
   {
-    id: "golden",
-    title: "Golden",
-    subtitle: "HUNTR/X · KPop Demon Hunters",
-    difficulty: 2,
-    beatMs: 560,
+    id: "${esc(id)}",
+    title: "${esc(title)}",
+    subtitle: "${esc(subtitle)}",
+    difficulty: ${difficulty},
+    beatMs: ${beatMs},
   },
-  goldenMelody
+  ${ident}Melody
 );
 
-const accompaniment: AccompNote[] = goldenBacking.map(([midi, beat, beats]) => ({
+const accompaniment: AccompNote[] = ${ident}Backing.map(([midi, beat, beats]) => ({
   midi,
   beat,
   beats,
@@ -218,7 +245,7 @@ const accompaniment: AccompNote[] = goldenBacking.map(([midi, beat, beats]) => (
 // Extend totalBeats so playback doesn't end before the backing track does.
 const backingEnd = accompaniment.reduce((mx, a) => Math.max(mx, a.beat + a.beats), 0);
 
-export const golden: Song = {
+export const ${ident}: Song = {
   ...base,
   totalBeats: Math.max(base.totalBeats, backingEnd),
   accompaniment,
