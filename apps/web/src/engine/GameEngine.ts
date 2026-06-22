@@ -68,15 +68,26 @@ export interface EngineCallbacks {
 
 export interface EngineOptions {
   layer: HTMLElement;
+  /** Element whose children carry the column markers the engine measures:
+   *  `[data-key]` keys in keyboard mode, `[data-lane]` lanes in 4-lane mode. */
   keyboardEl: HTMLElement;
   song: Song;
   settings?: Partial<EngineSettings>;
   on?: EngineCallbacks;
+  /** When true, notes fall in `laneCount` lanes (classic Piano-Tiles) instead
+   *  of being positioned under their pitch on the keyboard. */
+  laneMode?: boolean;
+  /** Number of lanes in lane mode (default 4). */
+  laneCount?: number;
 }
 
 interface RuntimeNote {
   i: number;
   midi: number;
+  /** The column this note lives in. Keyboard mode: === midi. Lane mode: lane
+   *  index 0..laneCount-1 (assigned for variety, never equal to the previous
+   *  note's lane). All positioning / input matching keys off this. */
+  col: number;
   letter: string;
   time: number;
   durMs: number;
@@ -104,7 +115,12 @@ export class GameEngine {
   running = false;
   paused = false;
   notes: RuntimeNote[] = [];
-  keyCenters: Record<number, number> = {}; // midi -> centerX (relative to layer)
+  laneMode = false;
+  laneCount = 4;
+  // col -> centerX (relative to layer). In keyboard mode col === midi; in lane
+  // mode col is the lane index. Named keyCenters for continuity with the
+  // recovered source.
+  keyCenters: Record<number, number> = {};
   keyWidth = 60;
   hitLineY = 0;
   _t0 = 0;
@@ -127,11 +143,23 @@ export class GameEngine {
     this.keyboardEl = opts.keyboardEl; // keyboard element (for measuring)
     this.song = opts.song;
     this.on = opts.on || {};
+    this.laneMode = !!opts.laneMode;
+    this.laneCount = opts.laneCount ?? 4;
     this.settings = Object.assign(
       { difficulty: "easy", colorMode: "single", showLetters: true },
       opts.settings || {}
     );
     this._loop = this._loopImpl.bind(this);
+  }
+
+  /** Pick a lane for the next note: any lane except `prev` (pure variety, not
+   *  pitch-based), so the same lane is never used twice in a row. */
+  _pickLane(prev: number): number {
+    const k = this.laneCount;
+    if (prev < 0) return Math.floor(Math.random() * k);
+    let r = Math.floor(Math.random() * (k - 1));
+    if (r >= prev) r += 1; // skip over the previous lane
+    return r;
   }
 
   palette(): Record<string, [string, string]> {
@@ -150,16 +178,31 @@ export class GameEngine {
   measure(): void {
     const layerRect = this.layer.getBoundingClientRect();
     this.hitLineY = layerRect.height * HIT_FRAC;
-    const keyEls = this.keyboardEl.querySelectorAll<HTMLElement>("[data-key]");
-    let w = 60;
-    keyEls.forEach((el) => {
-      const r = el.getBoundingClientRect();
-      const midi = parseInt(el.getAttribute("data-key")!, 10);
-      this.keyCenters[midi] = r.left + r.width / 2 - layerRect.left;
-      if (el.getAttribute("data-type") === "white") w = r.width;
-    });
-    this.keyWidth = w;
-    // reposition existing tiles' x
+    this.keyCenters = {};
+    if (this.laneMode) {
+      // Lane mode: measure the 4 lane columns (same width by flexbox).
+      const laneEls =
+        this.keyboardEl.querySelectorAll<HTMLElement>("[data-lane]");
+      let w = 80;
+      laneEls.forEach((el) => {
+        const r = el.getBoundingClientRect();
+        const lane = parseInt(el.getAttribute("data-lane")!, 10);
+        this.keyCenters[lane] = r.left + r.width / 2 - layerRect.left;
+        w = r.width;
+      });
+      this.keyWidth = w;
+    } else {
+      const keyEls = this.keyboardEl.querySelectorAll<HTMLElement>("[data-key]");
+      let w = 60;
+      keyEls.forEach((el) => {
+        const r = el.getBoundingClientRect();
+        const midi = parseInt(el.getAttribute("data-key")!, 10);
+        this.keyCenters[midi] = r.left + r.width / 2 - layerRect.left;
+        if (el.getAttribute("data-type") === "white") w = r.width;
+      });
+      this.keyWidth = w;
+    }
+    // reposition existing tiles' x (keyed off the note's column)
     this.notes.forEach((n) => {
       if (n.el) {
         const tw = this.tileW();
@@ -168,12 +211,14 @@ export class GameEngine {
           n.el.style.height = tw + "px";
           n.tileH = tw;
         }
-        n.x = this.keyCenters[n.midi] - tw / 2;
+        n.x = (this.keyCenters[n.col] || 0) - tw / 2;
       }
     });
   }
 
   tileW(): number {
+    // Lane mode tiles are bigger touch targets that fill more of the wide lane.
+    if (this.laneMode) return Math.max(54, Math.min(this.keyWidth * 0.62, 132));
     return Math.max(34, Math.min(this.keyWidth * 0.84, 84));
   }
 
@@ -188,21 +233,34 @@ export class GameEngine {
     this.layer.innerHTML = "";
     const beatMs = this.beatMs();
     const lead = this.fallMs() + 200; // so first tile can fall in fully
-    this.notes = this.song.notes.map((nn, i) => ({
-      i,
-      midi: nn.midi,
-      letter: nn.letter,
-      time: lead + nn.beat * beatMs, // when it should be hit (ms)
-      durMs: nn.beats * beatMs,
-      hold: nn.beats >= 2, // long notes must be held
-      el: null,
-      x: 0,
-      spawned: false,
-      headHit: false,
-      holding: false,
-      hit: false,
-      missed: false,
-    }));
+    let prevLane = -1;
+    this.notes = this.song.notes.map((nn, i) => {
+      // Column: pitch-positioned key in keyboard mode; a variety-shuffled lane
+      // (never the previous one) in lane mode.
+      let col: number;
+      if (this.laneMode) {
+        col = this._pickLane(prevLane);
+        prevLane = col;
+      } else {
+        col = nn.midi;
+      }
+      return {
+        i,
+        midi: nn.midi,
+        col,
+        letter: nn.letter,
+        time: lead + nn.beat * beatMs, // when it should be hit (ms)
+        durMs: nn.beats * beatMs,
+        hold: nn.beats >= 2, // long notes must be held
+        el: null,
+        x: 0,
+        spawned: false,
+        headHit: false,
+        holding: false,
+        hit: false,
+        missed: false,
+      };
+    });
     // Schedule the auto-played backing track on the SAME clock as the tiles.
     const backing = this.song.accompaniment || [];
     this.accomp = backing
@@ -282,19 +340,24 @@ export class GameEngine {
     if (!n.hold) span.style.fontSize = Math.round(tw * 0.5) + "px";
     span.textContent = this.settings.showLetters ? n.letter : "";
     el.appendChild(span);
-    n.x = (this.keyCenters[n.midi] || 0) - tw / 2;
+    n.x = (this.keyCenters[n.col] || 0) - tw / 2;
     this.layer.appendChild(el);
     n.el = el as HTMLDivElement;
   }
 
-  press(midi: number): boolean {
-    // find best candidate note for this key within hit window
+  /**
+   * Register a press on a column (a key midi in keyboard mode, a lane index in
+   * lane mode). Returns the matched note (so the caller can sound its pitch) or
+   * null for free play / a miss-window press.
+   */
+  press(col: number): RuntimeNote | null {
+    // find best candidate note for this column within the hit window
     const t = this.now();
     const win = 360;
     let best: RuntimeNote | null = null;
     let bestDelta = Infinity;
     for (const n of this.notes) {
-      if (n.hit || n.missed || n.headHit || n.midi !== midi) continue;
+      if (n.hit || n.missed || n.headHit || n.col !== col) continue;
       const d = Math.abs(n.time - t);
       if (d <= win && d < bestDelta) {
         best = n;
@@ -307,7 +370,7 @@ export class GameEngine {
       if (best.hold) {
         // long note: keep the tile, wait for the player to hold
         best.holding = true;
-        this.holds[midi] = best;
+        this.holds[col] = best;
         if (best.el) best.el.classList.add("tile-holding");
       } else {
         // quick tap: pop the tile right away
@@ -320,21 +383,21 @@ export class GameEngine {
       }
       this._burst(best);
       this._flash(best);
-      return true; // a scheduled note was caught
+      return best; // a scheduled note was caught
     }
-    return false; // free play (no penalty)
+    return null; // free play (no penalty)
   }
 
-  release(midi: number): void {
-    const n = this.holds[midi];
+  release(col: number): void {
+    const n = this.holds[col];
     if (!n) return;
-    delete this.holds[midi];
+    delete this.holds[col];
     this._completeHold(n);
   }
 
   _completeHold(n: RuntimeNote): void {
     if (n.hit) return;
-    delete this.holds[n.midi];
+    delete this.holds[n.col];
     n.holding = false;
     n.hit = true;
     const frac = (this.now() - n.time) / n.durMs;
@@ -379,14 +442,14 @@ export class GameEngine {
     // bright light bloom on the note as it is caught
     const f = document.createElement("div");
     f.className = "note-flash";
-    f.style.left = this.keyCenters[n.midi] + "px";
+    f.style.left = this.keyCenters[n.col] + "px";
     f.style.top = this.hitLineY + "px";
     this.layer.appendChild(f);
     setTimeout(() => f.remove(), 440);
   }
 
   _burst(n: RuntimeNote): void {
-    const cx = this.keyCenters[n.midi];
+    const cx = this.keyCenters[n.col];
     const cy = this.hitLineY;
     const burst = document.createElement("div");
     burst.className = "burst";
@@ -466,7 +529,9 @@ export class GameEngine {
               progress > 0.9 &&
               progress < 1.15
             ) {
-              target = n.midi;
+              // The guidance target is a column: a key midi (keyboard) or a
+              // lane index (lane mode). The Game screen highlights accordingly.
+              target = n.col;
             }
           }
         }

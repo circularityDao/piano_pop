@@ -5,7 +5,7 @@
 // unlocked here in App's onSelect handler.
 import { Ambient } from "../../components/Ambient";
 import { Icon } from "../../components/Icon";
-import type { Difficulty } from "../../state/usePreferences";
+import type { Difficulty, GameMode } from "../../state/usePreferences";
 import type { Song } from "../../songs/schema";
 
 interface Level {
@@ -21,13 +21,33 @@ const LEVELS: Level[] = [
   { id: "challenge", name: "Challenge", blurb: "Fast tiles, full energy", dots: 3 },
 ];
 
+interface ModeOption {
+  id: GameMode;
+  name: string;
+}
+
+// Two play styles. Keyboard = the original full 3-octave board; Tiles = the
+// classic 4-lane Piano-Tiles board.
+const MODES: ModeOption[] = [
+  { id: "keyboard", name: "🎹 Keyboard" },
+  { id: "lanes", name: "🎵 4-Lane Tiles" },
+];
+
 interface LevelSelectProps {
   song: Song;
+  mode: GameMode;
+  onSetMode: (mode: GameMode) => void;
   onSelect: (difficulty: Difficulty) => void;
   onBack: () => void;
 }
 
-export function LevelSelect({ song, onSelect, onBack }: LevelSelectProps) {
+export function LevelSelect({
+  song,
+  mode,
+  onSetMode,
+  onSelect,
+  onBack,
+}: LevelSelectProps) {
   return (
     <div className="screen active">
       <Ambient />
@@ -39,6 +59,24 @@ export function LevelSelect({ song, onSelect, onBack }: LevelSelectProps) {
         <p className="tagline">
           {song.title} · {song.notes.length} notes
         </p>
+
+        {/* Play-style picker (NEW): full keyboard vs. 4-lane tiles. Persisted. */}
+        <div className="mode-picker">
+          <span className="mode-picker-label">Play style</span>
+          <div className="seg mode-seg">
+            {MODES.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                className={"seg-btn" + (mode === m.id ? " on" : "")}
+                aria-pressed={mode === m.id}
+                onClick={() => onSetMode(m.id)}
+              >
+                {m.name}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="level-list">
           {LEVELS.map((lvl) => (

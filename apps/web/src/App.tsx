@@ -82,13 +82,20 @@ export function App() {
         <Menu songs={SONG_LIST} onSelectSong={pickSong} onSettings={toSettings} />
       )}
       {screen === "levels" && (
-        <LevelSelect song={song} onSelect={startGame} onBack={toMenu} />
+        <LevelSelect
+          song={song}
+          mode={prefs.mode}
+          onSetMode={(m) => setPref("mode", m)}
+          onSelect={startGame}
+          onBack={toMenu}
+        />
       )}
       {screen === "game" && (
         <Game
           key={runId}
           song={song}
           settings={settings}
+          mode={prefs.mode}
           muted={muted}
           onToggleMute={() => setMuted((m) => !m)}
           onFinish={finish}

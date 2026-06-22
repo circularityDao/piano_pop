@@ -16,6 +16,9 @@ import { storage } from "../platform/storage";
 export type Difficulty = "easy" | "normal" | "challenge";
 export type NoteColor = "single" | "rainbow";
 export type Sky = [string, string];
+/** How notes are presented & played: the full 3-octave keyboard, or the
+ *  classic 4-lane Piano-Tiles board. */
+export type GameMode = "keyboard" | "lanes";
 
 export interface Preferences {
   difficulty: Difficulty;
@@ -23,15 +26,20 @@ export interface Preferences {
   showLetters: boolean;
   guideKeys: boolean;
   sky: Sky;
+  /** Selected play style (NEW — not in the original bundle). */
+  mode: GameMode;
 }
 
 // Baked defaults — IDENTICAL to the recovered TWEAK_DEFAULTS (module `36c3f811`).
+// `mode` is a new option; it defaults to the original full-keyboard experience
+// so first-run behaviour is unchanged.
 export const DEFAULT_PREFERENCES: Preferences = {
   difficulty: "easy",
   noteColor: "single",
   showLetters: true,
   guideKeys: true,
   sky: ["#d79bff", "#ff93d2"], // unicorn
+  mode: "keyboard",
 };
 
 // The three curated sky palettes (recovered SKY_OPTIONS).
@@ -71,6 +79,10 @@ function sanitize(raw: unknown): Preferences {
     typeof v.sky[1] === "string"
       ? [v.sky[0], v.sky[1]]
       : [...DEFAULT_PREFERENCES.sky];
+  const mode: GameMode =
+    v.mode === "keyboard" || v.mode === "lanes"
+      ? v.mode
+      : DEFAULT_PREFERENCES.mode;
   return {
     difficulty,
     noteColor,
@@ -83,6 +95,7 @@ function sanitize(raw: unknown): Preferences {
         ? v.guideKeys
         : DEFAULT_PREFERENCES.guideKeys,
     sky,
+    mode,
   };
 }
 

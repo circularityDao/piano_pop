@@ -313,3 +313,99 @@
 .hud-btn-off:hover {
   opacity: 0.6;
 }
+
+/* ---------- Level select: play-style (mode) picker (NEW) ---------- */
+.mode-picker {
+  width: min(540px, 88vw);
+  margin: 22px auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.mode-picker-label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #fff;
+  opacity: 0.92;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+.mode-seg {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(4px);
+}
+.mode-seg .seg-btn {
+  color: #6a3b8f;
+}
+.mode-seg .seg-btn.on {
+  color: #fff;
+}
+
+/* ---------- 4-Lane (Piano-Tiles) mode (NEW) ---------- */
+/* In lane mode the field has no keyboard below it, so it can take the room. */
+.stage-lanes .field {
+  margin-bottom: 14px;
+  border-radius: 24px;
+}
+/* Interactive lane columns layered over the falling tiles. Transparent so the
+   tiles show through; each is its own pointer-capturing button (multi-touch). */
+.lane-pad {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+}
+.lane-btn {
+  flex: 1;
+  height: 100%;
+  border: none;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  background: transparent;
+  border-right: 1px dashed rgba(255, 255, 255, 0.35);
+  /* a soft tap glow rising from the hit zone toward the bottom */
+  transition: background 0.08s ease;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+}
+.lane-btn:last-child {
+  border-right: none;
+}
+.lane-btn.down,
+.lane-btn:active {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0) 60%,
+    rgba(255, 255, 255, 0.45) 100%
+  );
+}
+/* guide highlight on the lane whose tile is reaching the hit line */
+.lane-btn.guide {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 200, 40, 0) 55%,
+    rgba(255, 200, 40, 0.4) 100%
+  );
+  box-shadow: inset 0 0 0 2px rgba(255, 200, 40, 0.55);
+  animation: laneGuidePulse 0.5s ease-in-out infinite alternate;
+}
+@keyframes laneGuidePulse {
+  from {
+    box-shadow: inset 0 0 0 2px rgba(255, 200, 40, 0.4);
+  }
+  to {
+    box-shadow: inset 0 0 0 3px rgba(255, 200, 40, 0.85);
+  }
+}
+/* quick flash when a tile in this lane is caught */
+.lane-btn.flash {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0) 40%,
+    rgba(255, 255, 255, 0.6) 100%
+  );
+}
