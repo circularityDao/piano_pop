@@ -130,6 +130,9 @@ export function Game({
         accomp: (midi, vel) => {
           if (backingOnRef.current) pianoAudio.play(midi, vel);
         },
+        // Player-melody notes from a correctly-tapped lane tile's chunk, voiced
+        // in the song's original rhythm by the engine clock.
+        note: (midi) => pianoAudio.play(midi),
         end: (res) => onFinish(res),
       },
     });
@@ -179,10 +182,10 @@ export function Game({
     e.currentTarget.classList.add("down");
     if (!engineRef.current || pausedRef.current || countRef.current !== null)
       return;
-    // A correct press sounds EVERY note in the matched tile's group (a chord
-    // plays all its pitches); a miss-window press sounds nothing.
-    const note = engineRef.current.press(lane);
-    if (note) note.midis.forEach((m) => pianoAudio.play(m));
+    // A correct tap replays the tile's whole note-chunk in the song's original
+    // rhythm; the engine schedules + voices those notes (via the `note`
+    // callback). A miss-window tap sounds nothing.
+    engineRef.current.press(lane);
   };
   const handleLaneRelease = (
     e: ReactPointerEvent<HTMLButtonElement>,

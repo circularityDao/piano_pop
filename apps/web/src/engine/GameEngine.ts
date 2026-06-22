@@ -11,7 +11,7 @@
 // layer), exactly as the original — there is no separate React Tile component
 // in the source, so we keep it imperative to avoid behavioural drift.
 
-import type { Note, Song } from "../songs/schema";
+import type { Song } from "../songs/schema";
 
 export interface DifficultyEntry {
   beatScale: number;
@@ -22,6 +22,17 @@ export const DIFFICULTY: Record<string, DifficultyEntry> = {
   easy: { beatScale: 1.25, fallMs: 2900 },
   normal: { beatScale: 1.0, fallMs: 2300 },
   challenge: { beatScale: 0.8, fallMs: 1750 },
+};
+
+// 4-LANE mode difficulty = how many CONSECUTIVE melody notes are bundled into a
+// single tile (one tap). Fewer notes/tile = more tiles = harder. This is the
+// WHOLE lane difficulty mechanic; lane mode does NOT tempo-scale the music
+// (see build()), so the song always plays at its original timing regardless of
+// difficulty — only the tap density changes.
+export const LANE_GROUP_N: Record<string, number> = {
+  easy: 10,
+  normal: 8,
+  challenge: 5,
 };
 
 const HIT_FRAC = 0.82; // hit line sits this far down the field (a bit above the keys)
@@ -63,6 +74,9 @@ export interface EngineCallbacks {
   progress?: (p: number) => void;
   /** Play an auto-accompaniment note (the backing track, not a tile). */
   accomp?: (midi: number, velocity: number) => void;
+  /** Play a melody note from a correctly-tapped lane tile's group. Fired on the
+   *  engine clock so the chunk replays in the song's original rhythm. */
+  note?: (midi: number) => void;
   end?: (r: EndResult) => void;
 }
 
@@ -84,11 +98,14 @@ export interface EngineOptions {
 interface RuntimeNote {
   i: number;
   midi: number;
-  /** Every MIDI pitch this tile sounds when hit correctly. In keyboard mode
-   *  this is always a single note (`[midi]`). In lane mode a tile represents a
-   *  GROUP of notes sharing the same onset (a chord → one tile), so all of them
-   *  sound together on a correct press. */
+  /** Every MIDI pitch this tile sounds when hit correctly (keyboard mode: just
+   *  `[midi]`). */
   midis: number[];
+  /** Lane mode only: the chunk of consecutive melody notes this tile triggers.
+   *  Each carries its pitch plus `off` = ms after the tile's first note onset
+   *  at which it should sound, so a correct tap replays the chunk in the song's
+   *  ORIGINAL rhythm (not all at once). Keyboard tiles leave this empty. */
+  group: { midi: number; off: number }[];
   /** The column this note lives in. Keyboard mode: === midi. Lane mode: lane
    *  index 0..laneCount-1 (assigned for variety, never equal to the previous
    *  note's lane). All positioning / input matching keys off this. */
@@ -141,6 +158,9 @@ export class GameEngine {
   // Auto-played backing track (sorted by time); accompIdx is the next note due.
   accomp: { midi: number; time: number; vel: number }[] = [];
   accompIdx = 0;
+  // Lane mode: melody notes queued by correctly-tapped tiles, played out on the
+  // engine clock at their original-rhythm times (engine-clock ms).
+  _melody: { midi: number; time: number }[] = [];
   _loop: () => void;
 
   constructor(opts: EngineOptions) {
@@ -218,11 +238,15 @@ export class GameEngine {
       if (n.el) {
         const tw = this.tileW();
         n.el.style.width = tw + "px";
-        if (!n.hold) {
-          // Keyboard taps are square; lane taps are fixed-height rectangles.
-          const th = this.laneMode ? this.laneTapH() : tw;
+        if (this.laneMode) {
+          // Lane tiles span their chunk duration.
+          const th = this.laneTileH(n);
           n.el.style.height = th + "px";
           n.tileH = th;
+        } else if (!n.hold) {
+          // Keyboard taps are square.
+          n.el.style.height = tw + "px";
+          n.tileH = tw;
         }
         n.x = (this.keyCenters[n.col] || 0) - tw / 2;
       }
@@ -236,10 +260,19 @@ export class GameEngine {
     return Math.max(34, Math.min(this.keyWidth * 0.84, 84));
   }
 
-  /** Height of a quick-tap rectangle in lane mode (long-press tiles are taller,
-   *  sized from their duration in _makeTile). */
+  /** Minimum lane-tile rectangle height (a short chunk still gets a tappable
+   *  rectangle). */
   laneTapH(): number {
     return Math.max(54, Math.min(this.hitLineY * 0.24, 130));
+  }
+
+  /** Lane-tile rectangle height: spans the chunk's time-duration (its head
+   *  reaches the hit line exactly when the first note is due), with a floor so
+   *  short chunks stay tappable and a cap so a long trailing note can't make it
+   *  absurdly tall. */
+  laneTileH(n: RuntimeNote): number {
+    const span = (n.durMs / this.fallMs()) * this.hitLineY;
+    return Math.max(this.laneTapH(), Math.min(span, this.hitLineY * 1.6));
   }
 
   beatMs(): number {
@@ -250,78 +283,69 @@ export class GameEngine {
   }
 
   /**
-   * Build the 4-lane chart from the song's (player-melody) notes. A TILE is a
-   * GROUP of notes that share the same onset beat — a chord collapses into one
-   * tile whose every pitch sounds on a correct press; a monophonic passage
-   * yields one single-note tile per beat. Difficulty shapes the chart:
-   *   • easy      — one tile at a time, taps ONLY (a long source note is shown
-   *                 as a single tap; no long-press tiles, never two at once).
-   *   • normal    — one tile at a time, taps + long-press tiles (held notes).
-   *   • challenge — taps + long-press tiles AND up to TWO simultaneous tiles
-   *                 (a chord splits across two different lanes, capped at two).
-   *                 A monophonic song has no real chords, so it plays like
-   *                 normal — we never manufacture fake concurrency.
-   * Lane variety is preserved: a new tile never reuses the previous tile's
-   * lane; two simultaneous tiles always land in two different lanes.
+   * Build the 4-lane chart. A TILE is a CHUNK of N CONSECUTIVE melody notes
+   * (N = LANE_GROUP_N[difficulty]: easy 10 / normal 8 / challenge 5). The player
+   * makes ONE tap per tile, when the chunk's FIRST note is due; a correct tap
+   * then replays the whole chunk in the song's ORIGINAL rhythm (scheduled in
+   * press()). Tiles tile the field back-to-back: tile k+1 becomes due exactly
+   * when tile k's chunk ends, so overall song timing is unchanged — just fewer
+   * presses. The last tile may hold the remainder (< N notes).
+   *
+   * `beatMs` here is the song's UNSCALED ms/beat (build() passes the original
+   * tempo in lane mode), so the music plays at original speed at every
+   * difficulty. Lane variety preserved: each tile uses a different lane than the
+   * one before it.
    */
   _buildLaneTiles(beatMs: number, lead: number): RuntimeNote[] {
-    const diff = this.settings.difficulty;
-    const allowHold = diff !== "easy"; // easy renders long notes as taps
-    const allowTwo = diff === "challenge"; // only hard allows two-at-once
-
-    // Group consecutive notes that share an onset beat into chords.
-    const groups: { beat: number; notes: Note[] }[] = [];
-    for (const nn of this.song.notes) {
-      const last = groups[groups.length - 1];
-      if (last && last.beat === nn.beat) last.notes.push(nn);
-      else groups.push({ beat: nn.beat, notes: [nn] });
-    }
-
+    const N = LANE_GROUP_N[this.settings.difficulty] ?? 8;
+    const src = this.song.notes;
     const out: RuntimeNote[] = [];
     let prevLane = -1;
     let i = 0;
-    for (const g of groups) {
-      const time = lead + g.beat * beatMs;
-      // Decide how many tiles this group becomes. With two-at-once allowed and a
-      // real chord present, split into two tiles (first pitch + the rest) so the
-      // chord is two lanes; otherwise the whole group is one tile.
-      const buckets =
-        allowTwo && g.notes.length >= 2
-          ? [[g.notes[0]], g.notes.slice(1)]
-          : [g.notes];
-      const lanes: number[] = [];
-      for (let b = 0; b < buckets.length; b++)
-        lanes.push(this._pickLane(prevLane, lanes));
-      for (let b = 0; b < buckets.length; b++) {
-        const bnotes = buckets[b];
-        const midis = bnotes.map((n) => n.midi);
-        const maxBeats = bnotes.reduce((m, n) => Math.max(m, n.beats), 0);
-        out.push({
-          i: i++,
-          midi: midis[0],
-          midis,
-          col: lanes[b],
-          letter: bnotes[0].letter,
-          time,
-          durMs: maxBeats * beatMs,
-          hold: allowHold && maxBeats >= 2, // long-press tile only off easy
-          el: null,
-          x: 0,
-          spawned: false,
-          headHit: false,
-          holding: false,
-          hit: false,
-          missed: false,
-        });
-      }
-      prevLane = lanes[lanes.length - 1];
+    for (let s = 0; s < src.length; s += N) {
+      const chunk = src.slice(s, s + N);
+      const first = chunk[0];
+      const last = chunk[chunk.length - 1];
+      const time = lead + first.beat * beatMs;
+      // Each note's pitch + ms offset from the chunk's first onset (original
+      // rhythm). Span = first onset .. end of last note.
+      const group = chunk.map((nn) => ({
+        midi: nn.midi,
+        off: (nn.beat - first.beat) * beatMs,
+      }));
+      const spanMs = (last.beat + last.beats - first.beat) * beatMs;
+      const lane = this._pickLane(prevLane);
+      prevLane = lane;
+      out.push({
+        i: i++,
+        midi: first.midi,
+        midis: chunk.map((c) => c.midi),
+        group,
+        col: lane,
+        letter: first.letter,
+        time, // hit moment = first note's onset
+        durMs: spanMs, // tile rectangle spans the chunk's duration
+        hold: false, // lane tiles are tap-once now (no long-press)
+        el: null,
+        x: 0,
+        spawned: false,
+        headHit: false,
+        holding: false,
+        hit: false,
+        missed: false,
+      });
     }
     return out;
   }
 
   build(): void {
     this.layer.innerHTML = "";
-    const beatMs = this.beatMs();
+    // Lane mode plays at the song's ORIGINAL tempo (no beatScale) so the music
+    // timing is identical at every difficulty — difficulty is purely the tile
+    // chunk size N. Keyboard mode keeps its difficulty-scaled tempo. Both the
+    // melody tiles and the backing track below share this `beatMs`, so they stay
+    // in sync.
+    const beatMs = this.laneMode ? this.song.beatMs : this.beatMs();
     const lead = this.fallMs() + 200; // so first tile can fall in fully
     if (this.laneMode) {
       this.notes = this._buildLaneTiles(beatMs, lead);
@@ -333,6 +357,7 @@ export class GameEngine {
           i,
           midi: nn.midi,
           midis: [nn.midi],
+          group: [],
           col: nn.midi,
           letter: nn.letter,
           time: lead + nn.beat * beatMs, // when it should be hit (ms)
@@ -371,6 +396,7 @@ export class GameEngine {
     this.hits = 0;
     this.misses = 0;
     this.holds = {};
+    this._melody = [];
     this._t0 = performance.now();
     this.raf = requestAnimationFrame(this._loop);
   }
@@ -396,25 +422,14 @@ export class GameEngine {
     if (this.raf !== null) cancelAnimationFrame(this.raf);
   }
 
-  /** Lane-mode tile: a plain full-width rectangle (no pitch label). Long-press
-   *  tiles are taller rectangles proportional to their duration and carry the
-   *  rising hold-fill light. */
+  /** Lane-mode tile: a plain full-width rectangle (no pitch label) sized to span
+   *  its note-chunk's duration. Tapped once; no long-press. */
   _makeLaneTile(n: RuntimeNote): void {
     const el = document.createElement("div");
     const tw = this.tileW();
     el.style.width = tw + "px";
-    let h: number;
-    if (n.hold) {
-      el.className = "tile lane-tile lane-tile-hold";
-      h = Math.max(this.laneTapH() * 1.25, (n.durMs / this.fallMs()) * this.hitLineY * 0.9);
-      const fill = document.createElement("div");
-      fill.className = "tile-fill";
-      el.appendChild(fill);
-      n.fillEl = fill;
-    } else {
-      el.className = "tile lane-tile";
-      h = this.laneTapH();
-    }
+    el.className = "tile lane-tile";
+    const h = this.laneTileH(n);
     el.style.height = h + "px";
     n.tileH = h;
     if (this.settings.colorMode === "rainbow") {
@@ -489,6 +504,17 @@ export class GameEngine {
     if (best) {
       this._scoreHit(best, bestDelta);
       best.headHit = true;
+      // Lane tile: replay its note-chunk in the song's original rhythm. A
+      // correct tap is the only trigger, but the notes are scheduled at ABSOLUTE
+      // SONG TIME (the tile's own onset + each note's offset), NOT the tap time —
+      // so an early/late tap just "catches up" and the melody stays locked to the
+      // auto-played accompaniment. Any note already past at tap moment plays
+      // immediately on the next drain (it isn't dropped). Times are engine-clock
+      // ms, so this still survives pause/resume.
+      if (best.group.length) {
+        for (const gn of best.group)
+          this._melody.push({ midi: gn.midi, time: best.time + gn.off });
+      }
       if (best.hold) {
         // long note: keep the tile, wait for the player to hold
         best.holding = true;
@@ -619,6 +645,20 @@ export class GameEngine {
       }
     }
 
+    // Play any due melody notes queued by correctly-tapped lane tiles — this is
+    // what voices the player's part, in the chunk's original rhythm.
+    if (this.on.note && this._melody.length) {
+      const due: number[] = [];
+      this._melody = this._melody.filter((m) => {
+        if (m.time <= t) {
+          due.push(m.midi);
+          return false;
+        }
+        return true;
+      });
+      for (const midi of due) this.on.note(midi);
+    }
+
     // determine current guidance target (earliest unresolved note approaching)
     let target: number | null = null;
 
@@ -676,7 +716,13 @@ export class GameEngine {
       this.on.progress(p);
     }
 
-    if (t >= this.endTime) {
+    // Don't end while a tapped final phrase still has queued melody notes — keep
+    // looping so the drain above can voice them in rhythm. Otherwise a late tap
+    // on the last tile would be truncated. (Keyboard mode has no `_melody`, so it
+    // ends exactly as before — unchanged behaviour.)
+    const melodyPending =
+      this.laneMode && !!this.on.note && this._melody.length > 0;
+    if (t >= this.endTime && !melodyPending) {
       this.running = false;
       if (this.raf !== null) cancelAnimationFrame(this.raf);
       const acc = total ? this.hits / total : 0;
