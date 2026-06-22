@@ -409,3 +409,17 @@
     rgba(255, 255, 255, 0.6) 100%
   );
 }
+
+/* Lane-mode falling tiles — plain full-width rectangles (no pitch label),
+   overriding the round/pill keyboard-tile look from game.css. Long-press tiles
+   are taller (sized in the engine) and keep the rising hold-fill light. */
+.lane-tile {
+  border-radius: 12px;
+  align-items: stretch;
+  padding-bottom: 0;
+  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.18), inset 0 2px 0 rgba(255, 255, 255, 0.4);
+}
+.lane-tile-hold {
+  border: 2px solid rgba(255, 255, 255, 0.55);
+  overflow: hidden;
+}

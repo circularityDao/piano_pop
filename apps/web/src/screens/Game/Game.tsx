@@ -179,8 +179,10 @@ export function Game({
     e.currentTarget.classList.add("down");
     if (!engineRef.current || pausedRef.current || countRef.current !== null)
       return;
+    // A correct press sounds EVERY note in the matched tile's group (a chord
+    // plays all its pitches); a miss-window press sounds nothing.
     const note = engineRef.current.press(lane);
-    if (note) pianoAudio.play(note.midi);
+    if (note) note.midis.forEach((m) => pianoAudio.play(m));
   };
   const handleLaneRelease = (
     e: ReactPointerEvent<HTMLButtonElement>,

@@ -11,7 +11,7 @@
 // layer), exactly as the original — there is no separate React Tile component
 // in the source, so we keep it imperative to avoid behavioural drift.
 
-import type { Song } from "../songs/schema";
+import type { Note, Song } from "../songs/schema";
 
 export interface DifficultyEntry {
   beatScale: number;
@@ -84,6 +84,11 @@ export interface EngineOptions {
 interface RuntimeNote {
   i: number;
   midi: number;
+  /** Every MIDI pitch this tile sounds when hit correctly. In keyboard mode
+   *  this is always a single note (`[midi]`). In lane mode a tile represents a
+   *  GROUP of notes sharing the same onset (a chord → one tile), so all of them
+   *  sound together on a correct press. */
+  midis: number[];
   /** The column this note lives in. Keyboard mode: === midi. Lane mode: lane
    *  index 0..laneCount-1 (assigned for variety, never equal to the previous
    *  note's lane). All positioning / input matching keys off this. */
@@ -152,14 +157,20 @@ export class GameEngine {
     this._loop = this._loopImpl.bind(this);
   }
 
-  /** Pick a lane for the next note: any lane except `prev` (pure variety, not
-   *  pitch-based), so the same lane is never used twice in a row. */
-  _pickLane(prev: number): number {
+  /** Pick a lane for a tile: any lane that is not `prev` (the previous tile's
+   *  lane — pure variety, never the same lane twice in a row) and not already
+   *  `used` by a sibling tile in the SAME moment (two simultaneous hard-mode
+   *  tiles must sit in two different lanes). Falls back gracefully if every
+   *  lane is excluded. */
+  _pickLane(prev: number, used: number[] = []): number {
     const k = this.laneCount;
-    if (prev < 0) return Math.floor(Math.random() * k);
-    let r = Math.floor(Math.random() * (k - 1));
-    if (r >= prev) r += 1; // skip over the previous lane
-    return r;
+    let avail: number[] = [];
+    for (let l = 0; l < k; l++)
+      if (l !== prev && used.indexOf(l) < 0) avail.push(l);
+    if (!avail.length)
+      for (let l = 0; l < k; l++) if (used.indexOf(l) < 0) avail.push(l);
+    if (!avail.length) return 0;
+    return avail[Math.floor(Math.random() * avail.length)];
   }
 
   palette(): Record<string, [string, string]> {
@@ -208,8 +219,10 @@ export class GameEngine {
         const tw = this.tileW();
         n.el.style.width = tw + "px";
         if (!n.hold) {
-          n.el.style.height = tw + "px";
-          n.tileH = tw;
+          // Keyboard taps are square; lane taps are fixed-height rectangles.
+          const th = this.laneMode ? this.laneTapH() : tw;
+          n.el.style.height = th + "px";
+          n.tileH = th;
         }
         n.x = (this.keyCenters[n.col] || 0) - tw / 2;
       }
@@ -217,9 +230,16 @@ export class GameEngine {
   }
 
   tileW(): number {
-    // Lane mode tiles are bigger touch targets that fill more of the wide lane.
-    if (this.laneMode) return Math.max(54, Math.min(this.keyWidth * 0.62, 132));
+    // Lane mode tiles are full-width rectangles that fill their lane (a small
+    // gutter keeps neighbouring lanes visually separated).
+    if (this.laneMode) return Math.max(40, this.keyWidth - 8);
     return Math.max(34, Math.min(this.keyWidth * 0.84, 84));
+  }
+
+  /** Height of a quick-tap rectangle in lane mode (long-press tiles are taller,
+   *  sized from their duration in _makeTile). */
+  laneTapH(): number {
+    return Math.max(54, Math.min(this.hitLineY * 0.24, 130));
   }
 
   beatMs(): number {
@@ -229,38 +249,105 @@ export class GameEngine {
     return DIFFICULTY[this.settings.difficulty].fallMs;
   }
 
+  /**
+   * Build the 4-lane chart from the song's (player-melody) notes. A TILE is a
+   * GROUP of notes that share the same onset beat — a chord collapses into one
+   * tile whose every pitch sounds on a correct press; a monophonic passage
+   * yields one single-note tile per beat. Difficulty shapes the chart:
+   *   • easy      — one tile at a time, taps ONLY (a long source note is shown
+   *                 as a single tap; no long-press tiles, never two at once).
+   *   • normal    — one tile at a time, taps + long-press tiles (held notes).
+   *   • challenge — taps + long-press tiles AND up to TWO simultaneous tiles
+   *                 (a chord splits across two different lanes, capped at two).
+   *                 A monophonic song has no real chords, so it plays like
+   *                 normal — we never manufacture fake concurrency.
+   * Lane variety is preserved: a new tile never reuses the previous tile's
+   * lane; two simultaneous tiles always land in two different lanes.
+   */
+  _buildLaneTiles(beatMs: number, lead: number): RuntimeNote[] {
+    const diff = this.settings.difficulty;
+    const allowHold = diff !== "easy"; // easy renders long notes as taps
+    const allowTwo = diff === "challenge"; // only hard allows two-at-once
+
+    // Group consecutive notes that share an onset beat into chords.
+    const groups: { beat: number; notes: Note[] }[] = [];
+    for (const nn of this.song.notes) {
+      const last = groups[groups.length - 1];
+      if (last && last.beat === nn.beat) last.notes.push(nn);
+      else groups.push({ beat: nn.beat, notes: [nn] });
+    }
+
+    const out: RuntimeNote[] = [];
+    let prevLane = -1;
+    let i = 0;
+    for (const g of groups) {
+      const time = lead + g.beat * beatMs;
+      // Decide how many tiles this group becomes. With two-at-once allowed and a
+      // real chord present, split into two tiles (first pitch + the rest) so the
+      // chord is two lanes; otherwise the whole group is one tile.
+      const buckets =
+        allowTwo && g.notes.length >= 2
+          ? [[g.notes[0]], g.notes.slice(1)]
+          : [g.notes];
+      const lanes: number[] = [];
+      for (let b = 0; b < buckets.length; b++)
+        lanes.push(this._pickLane(prevLane, lanes));
+      for (let b = 0; b < buckets.length; b++) {
+        const bnotes = buckets[b];
+        const midis = bnotes.map((n) => n.midi);
+        const maxBeats = bnotes.reduce((m, n) => Math.max(m, n.beats), 0);
+        out.push({
+          i: i++,
+          midi: midis[0],
+          midis,
+          col: lanes[b],
+          letter: bnotes[0].letter,
+          time,
+          durMs: maxBeats * beatMs,
+          hold: allowHold && maxBeats >= 2, // long-press tile only off easy
+          el: null,
+          x: 0,
+          spawned: false,
+          headHit: false,
+          holding: false,
+          hit: false,
+          missed: false,
+        });
+      }
+      prevLane = lanes[lanes.length - 1];
+    }
+    return out;
+  }
+
   build(): void {
     this.layer.innerHTML = "";
     const beatMs = this.beatMs();
     const lead = this.fallMs() + 200; // so first tile can fall in fully
-    let prevLane = -1;
-    this.notes = this.song.notes.map((nn, i) => {
-      // Column: pitch-positioned key in keyboard mode; a variety-shuffled lane
-      // (never the previous one) in lane mode.
-      let col: number;
-      if (this.laneMode) {
-        col = this._pickLane(prevLane);
-        prevLane = col;
-      } else {
-        col = nn.midi;
-      }
-      return {
-        i,
-        midi: nn.midi,
-        col,
-        letter: nn.letter,
-        time: lead + nn.beat * beatMs, // when it should be hit (ms)
-        durMs: nn.beats * beatMs,
-        hold: nn.beats >= 2, // long notes must be held
-        el: null,
-        x: 0,
-        spawned: false,
-        headHit: false,
-        holding: false,
-        hit: false,
-        missed: false,
-      };
-    });
+    if (this.laneMode) {
+      this.notes = this._buildLaneTiles(beatMs, lead);
+    } else {
+      // KEYBOARD MODE — one tile per song note, positioned under its pitch.
+      // Preserved exactly: col === midi, holds when beats >= 2.
+      this.notes = this.song.notes.map((nn, i) => {
+        return {
+          i,
+          midi: nn.midi,
+          midis: [nn.midi],
+          col: nn.midi,
+          letter: nn.letter,
+          time: lead + nn.beat * beatMs, // when it should be hit (ms)
+          durMs: nn.beats * beatMs,
+          hold: nn.beats >= 2, // long notes must be held
+          el: null,
+          x: 0,
+          spawned: false,
+          headHit: false,
+          holding: false,
+          hit: false,
+          missed: false,
+        };
+      });
+    }
     // Schedule the auto-played backing track on the SAME clock as the tiles.
     const backing = this.song.accompaniment || [];
     this.accomp = backing
@@ -309,7 +396,42 @@ export class GameEngine {
     if (this.raf !== null) cancelAnimationFrame(this.raf);
   }
 
+  /** Lane-mode tile: a plain full-width rectangle (no pitch label). Long-press
+   *  tiles are taller rectangles proportional to their duration and carry the
+   *  rising hold-fill light. */
+  _makeLaneTile(n: RuntimeNote): void {
+    const el = document.createElement("div");
+    const tw = this.tileW();
+    el.style.width = tw + "px";
+    let h: number;
+    if (n.hold) {
+      el.className = "tile lane-tile lane-tile-hold";
+      h = Math.max(this.laneTapH() * 1.25, (n.durMs / this.fallMs()) * this.hitLineY * 0.9);
+      const fill = document.createElement("div");
+      fill.className = "tile-fill";
+      el.appendChild(fill);
+      n.fillEl = fill;
+    } else {
+      el.className = "tile lane-tile";
+      h = this.laneTapH();
+    }
+    el.style.height = h + "px";
+    n.tileH = h;
+    if (this.settings.colorMode === "rainbow") {
+      const c = this.palette()[n.letter] || ["#4C8DFF", "#2E6FE0"];
+      el.style.setProperty("--c1", c[0]);
+      el.style.setProperty("--c2", c[1]);
+    }
+    n.x = (this.keyCenters[n.col] || 0) - tw / 2;
+    this.layer.appendChild(el);
+    n.el = el as HTMLDivElement;
+  }
+
   _makeTile(n: RuntimeNote): void {
+    if (this.laneMode) {
+      this._makeLaneTile(n);
+      return;
+    }
     const el = document.createElement("div");
     const tw = this.tileW();
     el.style.width = tw + "px";
@@ -483,7 +605,9 @@ export class GameEngine {
     if (!this.running || this.paused) return;
     const t = this.now();
     const fall = this.fallMs();
-    const total = this.song.notes.length;
+    // Accuracy denominator = number of tiles. In keyboard mode that is the note
+    // count (unchanged); in lane mode grouping/splitting can change the count.
+    const total = this.laneMode ? this.notes.length : this.song.notes.length;
 
     // Play any due backing-track notes. After a stall (pause edge / tab switch)
     // the clock can jump, so skip notes that are already well past due rather
